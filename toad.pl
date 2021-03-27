@@ -1,5 +1,7 @@
+
 #!/usr/bin/perl
 #
+# Copyright (c) 2021 jpz4085
 # Copyright (c) 2016, 2019, 2020 Antoine Jacoutot <ajacoutot@openbsd.org>
 # Copyright (c) 2013, 2014, 2015, 2016 M:tier Ltd.
 #
@@ -39,80 +41,23 @@ if (@ARGV < 3) { usage (); }
 my ($action, $devclass, $devname) = @ARGV;
 my ($login, $uid, $gid, $display, $home) = get_active_user_info ();
 my $dbus_session_bus_address = get_dbus_session_bus_address ();
-my $mounttop = '/run';
-my $mountbase = "$mounttop/media";
-my $mountopts = 'nodev,nosuid,noexec';
+my $mounttop = "/media/$login";
+my $mountbase;
+my $mountfuse;
 my $devtype;
 my $devmax;
 my $pkrulebase = "/etc/polkit-1/rules.d/45-toad-$login";
 
 sub broom_sweep {
-	my $is_busy;
-	my @tryrm;
-	my @cfd;
-
 	unlink glob "$pkrulebase-$devname?.rules";
 
-	if (-d $mountbase && $mountbase ne '/') {
-		opendir (TOP, $mountbase) or return;
-		while (my $file = readdir (TOP)) {
-			next if ($file =~ m/^\./);
-			next unless (-d "$mountbase/$file");
-			push @cfd, "$mountbase/$file";
-			opendir (SUB, "$mountbase/$file") or die "cannot open $mountbase/$file: $!";
-			while (my $subfile = readdir (SUB)) {
-				next if ($subfile =~ m/^\./);
-				next unless (-d "$mountbase/$file/$subfile");
-				if ((stat ("$mountbase/$file/$subfile"))[1] != 2) {
-					push @cfd, "$mountbase/$file/$subfile";
-				} else {
-					# subdir is mounted, so don't try to
-					# remove parent
-					$is_busy = 1;
-					my $i = 0;
-					my $c = scalar @cfd;
-					while ($cfd[$i]) {
-						$i++ until $cfd[$i] eq "$mountbase/$file" or $i==$c;
-						splice (@cfd, $i, 1);
-					}
-				}
-			}
-			closedir (SUB);
-		}
-		closedir (TOP);
-
-		@tryrm = reverse sort @cfd;
-
-		foreach my $rmfile (@tryrm) {
-			rmdir ($rmfile);
-		}
-
-		# nothing is mounted, so remove the hierarchy
-		unless ($is_busy) {
-			rmdir ($mountbase);
-			rmdir ($mounttop);
-		}
+	if ($devtype eq 'cd') {
+		exec("/usr/local/libexec/hotplug-diskmount -d $mounttop cleanup $devname");
 	}
 }
 
-sub create_hier {
-	make_path ($mountbase, {owner=>0, group=>0, mode=>0755});
-	chown 0, 0, $mounttop, $mountbase;
-	chmod 0755, $mounttop, $mountbase;
-}
-
-sub create_mount_point {
-	my $devnum = shift;
-
-	create_hier ();
-
-	make_path ("$mountbase/$login/$devtype$devnum", {owner=>$uid, group=>$gid, mode=>0700});
-	chown $uid, $gid, "$mountbase/$login", "$mountbase/$login/$devtype$devnum";
-	chmod 0700, "$mountbase/$login", "$mountbase/$login/$devtype$devnum";
-}
-
 sub create_pkrule {
-	my($devname, $devnum, $part) = @_;
+	my($devname, $part, $mountbase) = @_;
 	my $pkrule = "$pkrulebase-$devname$part.rules";
 
 	unless(open PKRULE, '>'.$pkrule) {
@@ -122,7 +67,7 @@ sub create_pkrule {
 	print PKRULE "polkit.addRule(function(action, subject) {\n";
 	print PKRULE "  if (action.id == \"org.freedesktop.policykit.exec\" &&\n";
 	print PKRULE "    action.lookup(\"program\") == \"/sbin/umount\" &&\n";
-	print PKRULE "    action.lookup(\"command_line\") == \"/sbin/umount $mountbase/$login/$devtype$devnum\") {\n";
+	print PKRULE "    action.lookup(\"command_line\") == \"/sbin/umount $mountbase\") {\n";
 	print PKRULE "    if (subject.local && subject.active && subject.user == \"$login\") {\n";
 	print PKRULE "      return polkit.Result.YES;\n";
 	print PKRULE "    }\n";
@@ -226,7 +171,7 @@ sub get_dbus_session_file {
 	}
 
 	$id =~ s/\R//g; # drop line break
-	$display =~ s/://;
+	$display =~ s/^.{3}//;
 
 	return "$home/.dbus/session-bus/$id-$display";
 }
@@ -254,34 +199,73 @@ sub get_dbus_session_bus_address {
 }
 
 sub get_mount_point {
-	my $devnum;
+	my($devname, $part) = @_;
+	my $mntgrep;
+	my $mntpath;
+	my $i = 3;
 
-	for ($devnum = 0; $devnum < $devmax; $devnum = $devnum + 1) {
-		my $mounts = `/sbin/mount | /usr/bin/grep $mountbase/$login/$devtype$devnum`;
-		next unless ($mounts eq '');
-		last;
-	}
-	return ($devnum);
+	do {
+		$mntgrep = `/sbin/mount | /usr/bin/grep $devname$part | /usr/bin/awk \'{print \$$i}\'`;
+		chomp ($mntgrep);
+		if ($mntgrep ne 'type') {
+			if ($i >= 4) {
+				$mntpath .= "\\ $mntgrep";
+			} else {
+				$mntpath = $mntgrep;
+			}
+		}
+		$i++;
+	} while ($mntgrep ne 'type');
+
+	return ($mntpath);
+}
+
+sub get_ntfs_label {
+	my($devname, $ntfspart) = @_;
+	my $mntntfs;
+	my $mntexfat;
+
+	$mntntfs = `/usr/local/sbin/ntfslabel /dev/$devname$ntfspart 2>&1`;
+	$mntexfat = `/usr/local/sbin/exfatlabel /dev/$devname$ntfspart 2>&1`;
+	chomp ($mntntfs, $mntexfat);
+	if (index($mntntfs, 'NTFS signature is missing.') != -1) {
+		if ($mntexfat eq '') {
+			$mntexfat = "NONAME";
+		}
+		$mntexfat =~ s/ /\\ /g;
+		return ("$mounttop/$mntexfat");
+	} else {
+		if ($mntntfs eq '') {
+			$mntntfs = "NONAME";
+		}
+		$mntntfs =~ s/ /\\ /g;
+		return ("$mounttop/$mntntfs");
+	}		
 }
 
 sub get_parts {
-	my @parts;
+	my @allparts;
+	my @ntfsparts;
 	my @supportedfs = ('MSDOS', 'NTFS', '4.2BSD', 'ext2fs', 'ISO9660', 'UDF');
 
 	foreach my $fs (@supportedfs) {
 		my $fsmatch = `/sbin/disklabel $devname 2>/dev/null | /usr/bin/grep " $fs "`;
 		while ($fsmatch =~ /([^\n]+)\n?/g) {
 			my @part = split /:/, $1;
-			push (@parts, $part[0]);
+			$part[0] =~ s/ //g;
+			push (@allparts, $part[0]);
+			if ($fs eq 'NTFS') {
+				push (@ntfsparts, $part[0]);
+			}
 		}
 	}
 
-	return (@parts);
+	return (\@allparts, \@ntfsparts);
 }
 
 sub mount_device {
-	my @allparts;
 	my @parts;
+	my @ntfsp;
 
 	# XXX skip device on error (e.g. DIOCGDINFO) or softraid(4) attachment
 	if (system ("set -o pipefail; /sbin/disklabel $devname 2>/dev/null | ! grep -qw RAID") != 0) {
@@ -291,10 +275,15 @@ sub mount_device {
 	if ($devtype eq 'cd') {
 		@parts = 'a';
 	} else {
-		@allparts = get_parts ();
-		foreach my $part (@allparts) {
+		my ($allparts, $ntfsparts) = get_parts ();
+		foreach my $part (@$allparts) {
 			if ($part !~ 'c$') {
 				push @parts, $part;
+			}
+		}
+		foreach my $ntfs (@$ntfsparts) {
+			if ($ntfs !~ 'c$') {
+				push @ntfsp, $ntfs;
 			}
 		}
 	}
@@ -304,33 +293,39 @@ sub mount_device {
 		return (0);
 	}
 
+	if (@ntfsp) {
+		foreach my $ntfs (@ntfsp) {
+			$ntfs =~ s/^\s+//;
+			$mountfuse = get_ntfs_label ($devname, $ntfs);
+			create_pkrule ($devname, $ntfs, "$mountfuse");
+		}
+	}
+
+	if (!-d $mounttop) {
+		my $mountrw = system("/usr/local/libexec/hotplug-diskmount -d $mounttop init 2>&1");
+		if ($mountrw != 0) {
+			gdbus_call ("notify", "Cannot create mount folder $mounttop");
+			exit (1);
+		}
+		sleep (1);
+	}
+	my $mountrw = system("/usr/local/libexec/hotplug-diskmount -d $mounttop attach -m 0700 -u $login $devname 2>&1");
+	if ($mountrw != 0) {
+		gdbus_call ("notify", "Cannot mount partitions on device $devname");
+		exit (1);
+	}
+	my $pcount = @parts;
+	sleep ($pcount);
+
 	foreach my $part (@parts) {
-		$part =~ s/^\s+//;
-		my $device = "/dev/$devname$part";
-
-		# skip already mounted partition
-		if (system ("/sbin/mount | grep -q $device") == 0) {
-			next;
+		unless (grep $_ eq $part, @ntfsp) {
+			$part =~ s/^\s+//;
+			$mountbase = get_mount_point ($devname, $part);
+			create_pkrule ($devname, $part, "$mountbase");
+			gdbus_call ("open-fm", "$mountbase");
+		} else {
+			gdbus_call ("open-fm", "$mountfuse");
 		}
-
-		my $devnum = get_mount_point ();
-		create_mount_point ($devnum);
-		create_pkrule ($devname, $devnum, $part);
-
-		my $mountrw = `/sbin/mount -o $mountopts $device $mountbase/$login/$devtype$devnum 2>&1`;
-		if (length ($mountrw) != 0) {
-			system ("/sbin/mount -o $mountopts,ro $device $mountbase/$login/$devtype$devnum");
-			unless ($? == 0) {
-				gdbus_call ("notify", "Cannot mount $device!");
-				broom_sweep ();
-				next;
-			}
-			unless ($mountrw =~ /Permission denied/) {
-				gdbus_call ("notify", "Unclean filesystem on device $device, mounting read-only");
-			}
-		}
-
-		gdbus_call ("open-fm", "$mountbase/$login/$devtype$devnum");
 	}
 }
 
