@@ -1,4 +1,5 @@
 .\"
+.\" Copyright (c) 2021 jpz4085
 .\" Copyright (c) 2016 Antoine Jacoutot <ajacoutot@openbsd.org>
 .\" Copyright (c) 2013 M:tier Ltd.
 .\"
@@ -15,7 +16,7 @@
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .\"
 .\"
-.Dd $Mdocdate: December 18 2016 $
+.Dd $Mdocdate: March 25 2021 $
 .Dt TOAD 8
 .Os
 .Sh NAME
@@ -39,21 +40,15 @@ is a utility meant to be started from the
 and
 .Em detach
 scripts.
-It will try to mount all partitions found on the device under
-.Pa /run/media/${USER}/device .
+It will attempt to mount all supported partitions on the device under
+.Pa /media/${USER}/device .
 Where ${USER} is the active user
 .Em login
 name and
 .Em device
-is the type of the device,
-.Em usb
-or
-.Em cd ,
-followed by its number (from
-.Em 0
-to
-.Em 9 ) .
-This follows the
+is either the partition volume label or the disk label description
+followed by a partition number (ex. Sandisk Cruzer-p1). Mounting
+uses the hotplug-diskmount(8) command and follows the
 .Em udev
 hierarchy in Linux which allows interaction with GLib/GIO's GUnixMount.
 .Pp
@@ -117,6 +112,7 @@ esac
 .Ed
 .Sh SEE ALSO
 .Xr dbus-daemon 1 ,
-.Xr hotplugd 8
+.Xr hotplugd 8 ,
+.Xr hotplug-diskmount 8
 .Sh AUTHORS
 .An Antoine Jacoutot Aq Mt antoine@mtier.org
