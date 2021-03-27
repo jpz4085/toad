@@ -1,13 +1,15 @@
 # toad
+
 device automounter for OpenBSD hotplugd(8)
 
 toad (Toad Opens All Devices) is a utility meant to be started from the
-hotplugd(8) attach and detach scripts.  It will try to mount all
-partitions found on the device under /run/media/${USER}/device.  Where
-${USER} is the active user login name and device is the type of the
-device, usb or cd, followed by its number (from 0 to 9).  This follows
-the udev hierarchy in Linux which allows interaction with GLib/GIO's
-GUnixMount.
+hotplugd(8) attach and detach scripts.  It will attempt to mount all
+supported partitions found on the device under /media/${USER}/device. Where
+${USER} is the active user login name and device is either the partition
+volume label or the disk label description followed by a partition number
+(ex. Sandisk Cruzer-p1). Mounting uses the hotplug-diskmount(8) command
+and follows the udev hierarchy in Linux which allows interaction with
+GLib/GIO's GUnixMount.
 
 Detection of the currently active user is done using ConsoleKit and DBus,
 toad will not do anything unless these are properly setup and running.
@@ -32,17 +34,16 @@ Runtime dependencies
 toad(8):
 - Net::DBus			required
 - ConsoleKit			required
-- GLib (OpenBSD package)	required (patched for umount(8) with pkexec(1))
 - Polkit			required (for eject(1)/umount(8))
+- GLib (OpenBSD package)	required (patched for umount(8) with pkexec(1))
+- hotplug-diskmount(8)		required (replacement for mount(8) subroutines)
 
 toadd(8):
 - toad(8)			required
 
-TODO
-----
-- better notifications and logging (syslog)
-- toadd cleanup mount points on SIG{TERM,HUP,...?}
-- check for parts without hardcoding the supported FS?
-- check whether fuse0 is accessible and use ntfs3g if available
-- pledge(2), unveil(2)
-- move most system() calls to perl modules
+Changes
+-------
+- mount operations performed by enhanced hotplug-diskmount(8)
+- removed mount point management code which is not required
+- works with fuse FS drivers such as ntfs3g and exfat-fuse
+- fixed dbus session file name issue affecting gdbus_call
