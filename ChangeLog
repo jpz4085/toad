@@ -1,9 +1,11 @@
-v2.0 - Fri Mar 26 2021
+v2.0 - Wed Mar 31 18:05:41 EDT 2021
 ------------------------------------
 - perform mount operations using enhanced hotplug-diskmount(8)
 - works with fuse FS drivers supported by hotplug-diskmount(8)
 - removed old mount point management code which is not required
 - fixed format of dbus session file name needed for gdbus_call
+- run makewhatis after install to update manual index database
+- add uninstall function to remove files and reindex database
 
 v1.14 - UNRELEASED
 ------------------------------------
