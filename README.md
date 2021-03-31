@@ -28,6 +28,20 @@ Installing
 ----------
     $ make
     $ doas make install
+    
+Create hotplug scripts:
+
+    $ doas cp /usr/local/share/examples/toad/hotplug-scripts /etc/hotplug/attach
+    $ doas cp /usr/local/share/examples/toad/hotplug-scripts /etc/hotplug/detach
+
+Uninstalling
+------------
+    $ doas make uninstall
+
+Remove hotplug scripts:
+
+    $ doas rm /etc/hotplug/attach
+    $ doas rm /etc/hotplug/detach
 
 Runtime dependencies
 --------------------
