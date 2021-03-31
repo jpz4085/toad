@@ -1,6 +1,6 @@
 PREFIX?=	/usr/local
 BINDIR= 	${PREFIX}/libexec
-MANDIR= 	${PREFIX}/man/cat
+MANDIR= 	${PREFIX}/man/man
 SHAREDIR=	${PREFIX}/share
 EXAMPLEDIR=	${SHAREDIR}/examples/toad
 
@@ -18,11 +18,22 @@ CFLAGS+=	-Werror
 
 CLEANFILES=	hotplug-scripts
 
-afterinstall:
+all:
 	sed -e 's,@PREFIX@,${PREFIX},g' ${.CURDIR}/hotplug-scripts.in > \
 		${.CURDIR}/hotplug-scripts
+
+afterinstall:
 	${INSTALL_DIR} -d ${DESTDIR}${EXAMPLEDIR}
 	${INSTALL_SCRIPT} ${.CURDIR}/hotplug-scripts ${DESTDIR}${EXAMPLEDIR}
 	${INSTALL_SCRIPT} ${.CURDIR}/toad.pl ${DESTDIR}${BINDIR}/toad
+
+maninstall:
+	makewhatis ${PREFIX}/man
+
+uninstall:
+	rm ${DESTDIR}${BINDIR}/toad ${DESTDIR}${BINDIR}/${PROG}
+	rm ${DESTDIR}${MANDIR}8/toad.8 ${DESTDIR}${MANDIR}8/toadd.8
+	rm -r ${EXAMPLEDIR}
+	makewhatis ${PREFIX}/man
 
 .include <bsd.prog.mk>
