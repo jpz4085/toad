@@ -171,7 +171,8 @@ sub get_dbus_session_file {
 	}
 
 	$id =~ s/\R//g; # drop line break
-	$display =~ s/^.{3}//;
+	$display =~ s/://;
+	$display =~ s/\..*//;
 
 	return "$home/.dbus/session-bus/$id-$display";
 }
@@ -224,6 +225,11 @@ sub get_ntfs_label {
 	my($devname, $ntfspart) = @_;
 	my $mntntfs;
 	my $mntexfat;
+	
+	unless (-e '/usr/local/bin/ntfs-3g' && -e '/usr/local/sbin/mount.exfat-fuse') {
+		gdbus_call ("notify", "NTFS and exFAT support missing.");
+		exit (1);
+	}
 
 	$mntntfs = `/usr/local/sbin/ntfslabel /dev/$devname$ntfspart 2>&1`;
 	$mntexfat = `/usr/local/sbin/exfatlabel /dev/$devname$ntfspart 2>&1`;
