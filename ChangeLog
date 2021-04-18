@@ -1,3 +1,8 @@
+v2.1 - Sat Apr 17 20:16:24 EDT 2021
+-----------------------------------
+- check if ntfs-3g or exfat-fuse packages are installed.
+- adjust dbus session file display id format for variability.
+
 v2.0 - Wed Mar 31 18:05:41 EDT 2021
 ------------------------------------
 - perform mount operations using enhanced hotplug-diskmount(8)
