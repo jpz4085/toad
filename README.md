@@ -33,6 +33,10 @@ Create hotplug scripts:
 
     $ doas cp /usr/local/share/examples/toad/hotplug-scripts /etc/hotplug/attach
     $ doas cp /usr/local/share/examples/toad/hotplug-scripts /etc/hotplug/detach
+    
+Create media directory:
+
+    $ doas mkdir /media
 
 Uninstalling
 ------------
